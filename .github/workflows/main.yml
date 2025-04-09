@@ -11,6 +11,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
+        sudo apt-get update
         sudo apt-get install fakeroot build-essential kexec-tools kernel-wedge gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabihf libncurses6 libncurses-dev libelf-dev asciidoc binutils-dev
         sudo apt-get build-dep linux
     - name: Configure linux
