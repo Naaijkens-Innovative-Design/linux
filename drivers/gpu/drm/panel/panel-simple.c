@@ -388,6 +388,57 @@ static void panel_simple_shutdown(struct device *dev)
 	panel_simple_unprepare(&panel->base);
 }
 
+static const struct drm_display_mode admatec_t070p133t0s301_mode = {
+	.clock = 37000,
+	.hdisplay = 800,
+	.hsync_start = 800 + 327,
+	.hsync_end =  800  + 327 + 1,
+	.htotal = 800 + 48 + 327 + 1,
+	.vdisplay = 480,
+	.vsync_start = 480 + 25,
+	.vsync_end = 480 + 25 + 1,
+	.vtotal = 480 + 20 + 25 + 1,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
+};
+
+static const struct panel_desc admatec_t070p133t0s301 = {
+	.modes = &admatec_t070p133t0s301_mode,
+	.num_modes = 1,
+	.bpc = 8,
+	.size = {
+		.width = 95,
+		.height = 54,
+	},
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_POSEDGE,
+};
+
+static const struct drm_display_mode admatec_t043c004800272t2a_mode = {
+	.clock = 9200,
+	.hdisplay = 480,
+	.hsync_start = 480 + 40,
+	.hsync_end = 480 + 40 + 20,
+	.htotal = 480 + 40 + 20 + 60,
+	.vdisplay = 272,
+	.vsync_start = 272 + 10,
+	.vsync_end = 272 + 10 + 10,
+	.vtotal = 272 + 10 + 10 + 10,
+	.vrefresh = 60,
+};
+
+static const struct panel_desc admatec_t043c004800272t2a = {
+	.modes = &admatec_t043c004800272t2a_mode,
+	.num_modes = 1,
+	.bpc = 8,
+	.size = {
+		.width = 95,
+		.height = 54,
+	},
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_POSEDGE,
+};
+
 static const struct drm_display_mode ampire_am_480272h3tmqw_t01h_mode = {
 	.clock = 9000,
 	.hdisplay = 480,
@@ -1057,6 +1108,32 @@ static const struct panel_desc innolux_at070tn92 = {
 		.height = 86,
 	},
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+};
+
+static const struct drm_display_mode innolux_ee080na_06a_mode = {
+	.clock = 40000,
+	.hdisplay = 800,
+	.hsync_start = 800 + 220,
+	.hsync_end = 800 + 220 + 10,
+	.htotal = 800 + 220 + 10 + 36,
+	.vdisplay = 600,
+	.vsync_start = 600 + 18,
+	.vsync_end = 600 + 18 + 5,
+	.vtotal = 600 + 18 + 5 + 17,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+};
+
+static const struct panel_desc innolux_ee080na_06a = {
+	.modes = &innolux_ee080na_06a_mode,
+	.num_modes = 1,
+	.bpc = 8,
+	.size = {
+		.width = 162,
+		.height = 121,
+	},
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_POSEDGE,
 };
 
 static const struct display_timing innolux_g101ice_l01_timing = {
@@ -1941,6 +2018,12 @@ static const struct panel_desc winstar_wf35ltiacd = {
 
 static const struct of_device_id platform_of_match[] = {
 	{
+		.compatible = "admatec,t070p133t0s301",
+		.data = &admatec_t070p133t0s301,
+	}, {
+		.compatible = "admatec,t043c004800272t2a",
+		.data = &admatec_t043c004800272t2a,
+	}, {
 		.compatible = "ampire,am-480272h3tmqw-t01h",
 		.data = &ampire_am_480272h3tmqw_t01h,
 	}, {
@@ -2021,6 +2104,9 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "innolux,at070tn92",
 		.data = &innolux_at070tn92,
+	}, {
+		.compatible ="innolux,ee080na-06a",
+		.data = &innolux_ee080na_06a
 	}, {
 		.compatible ="innolux,g101ice-l01",
 		.data = &innolux_g101ice_l01

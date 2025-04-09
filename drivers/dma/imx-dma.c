@@ -183,7 +183,7 @@ struct imxdma_engine {
 	void __iomem			*base;
 	struct clk			*dma_ahb;
 	struct clk			*dma_ipg;
-	spinlock_t			lock;
+	raw_spinlock_t			lock;
 	struct imx_dma_2d_config	slots_2d[IMX_DMA_2D_SLOTS];
 	struct imxdma_channel		channel[IMX_DMA_CHANNELS];
 	enum imx_dma_type		devtype;
@@ -438,16 +438,16 @@ static void dma_irq_handle_channel(struct imxdma_channel *imxdmac)
 	struct imxdma_desc *desc;
 	unsigned long flags;
 
-	spin_lock_irqsave(&imxdma->lock, flags);
+	raw_spin_lock_irqsave((&imxdma->lock, flags);
 	if (list_empty(&imxdmac->ld_active)) {
-		spin_unlock_irqrestore(&imxdma->lock, flags);
+		raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 		goto out;
 	}
 
 	desc = list_first_entry(&imxdmac->ld_active,
 				struct imxdma_desc,
 				node);
-	spin_unlock_irqrestore(&imxdma->lock, flags);
+	raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 
 	if (desc->sg) {
 		u32 tmp;
@@ -626,11 +626,11 @@ static void imxdma_tasklet(unsigned long data)
 	struct imxdma_desc *desc;
 	unsigned long flags;
 
-	spin_lock_irqsave(&imxdma->lock, flags);
+	raw_spin_lock_irqsave(&imxdma->lock, flags);
 
 	if (list_empty(&imxdmac->ld_active)) {
 		/* Someone might have called terminate all */
-		spin_unlock_irqrestore(&imxdma->lock, flags);
+		raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 		return;
 	}
 	desc = list_first_entry(&imxdmac->ld_active, struct imxdma_desc, node);
@@ -661,7 +661,7 @@ static void imxdma_tasklet(unsigned long data)
 				 __func__, imxdmac->channel);
 	}
 out:
-	spin_unlock_irqrestore(&imxdma->lock, flags);
+	raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 
 	dmaengine_desc_get_callback_invoke(&desc->desc, NULL);
 }
@@ -674,10 +674,10 @@ static int imxdma_terminate_all(struct dma_chan *chan)
 
 	imxdma_disable_hw(imxdmac);
 
-	spin_lock_irqsave(&imxdma->lock, flags);
+	raw_spin_lock_irqsave(&imxdma->lock, flags);
 	list_splice_tail_init(&imxdmac->ld_active, &imxdmac->ld_free);
 	list_splice_tail_init(&imxdmac->ld_queue, &imxdmac->ld_free);
-	spin_unlock_irqrestore(&imxdma->lock, flags);
+	raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 	return 0;
 }
 
@@ -743,10 +743,10 @@ static dma_cookie_t imxdma_tx_submit(struct dma_async_tx_descriptor *tx)
 	dma_cookie_t cookie;
 	unsigned long flags;
 
-	spin_lock_irqsave(&imxdma->lock, flags);
+	raw_spin_lock_irqsave(&imxdma->lock, flags);
 	list_move_tail(imxdmac->ld_free.next, &imxdmac->ld_queue);
 	cookie = dma_cookie_assign(tx);
-	spin_unlock_irqrestore(&imxdma->lock, flags);
+	raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 
 	return cookie;
 }
@@ -789,13 +789,13 @@ static void imxdma_free_chan_resources(struct dma_chan *chan)
 	struct imxdma_desc *desc, *_desc;
 	unsigned long flags;
 
-	spin_lock_irqsave(&imxdma->lock, flags);
+	raw_spin_lock_irqsave(&imxdma->lock, flags);
 
 	imxdma_disable_hw(imxdmac);
 	list_splice_tail_init(&imxdmac->ld_active, &imxdmac->ld_free);
 	list_splice_tail_init(&imxdmac->ld_queue, &imxdmac->ld_free);
 
-	spin_unlock_irqrestore(&imxdma->lock, flags);
+	raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 
 	list_for_each_entry_safe(desc, _desc, &imxdmac->ld_free, node) {
 		kfree(desc);
@@ -996,7 +996,7 @@ static void imxdma_issue_pending(struct dma_chan *chan)
 	struct imxdma_desc *desc;
 	unsigned long flags;
 
-	spin_lock_irqsave(&imxdma->lock, flags);
+	raw_spin_lock_irqsave(&imxdma->lock, flags);
 	if (list_empty(&imxdmac->ld_active) &&
 	    !list_empty(&imxdmac->ld_queue)) {
 		desc = list_first_entry(&imxdmac->ld_queue,
@@ -1011,7 +1011,7 @@ static void imxdma_issue_pending(struct dma_chan *chan)
 				       &imxdmac->ld_active);
 		}
 	}
-	spin_unlock_irqrestore(&imxdma->lock, flags);
+	raw_spin_unlock_irqrestore(&imxdma->lock, flags);
 }
 
 static bool imxdma_filter_fn(struct dma_chan *chan, void *param)
@@ -1136,7 +1136,7 @@ static int __init imxdma_probe(struct platform_device *pdev)
 	for (i = 0; i < IMX_DMA_2D_SLOTS; i++)
 		imxdma->slots_2d[i].count = 0;
 
-	spin_lock_init(&imxdma->lock);
+	raw_spin_lock_init(&imxdma->lock);
 
 	/* Initialize channel parameters */
 	for (i = 0; i < IMX_DMA_CHANNELS; i++) {

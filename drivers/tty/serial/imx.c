@@ -1731,6 +1731,11 @@ static int imx_rs485_config(struct uart_port *port,
 		rs485conf->flags &= ~SER_RS485_ENABLED;
 
 	if (rs485conf->flags & SER_RS485_ENABLED) {
+		/* Enable receiver if low-active RTS signal is requested */
+		if (sport->have_rtscts &&  !sport->have_rtsgpio &&
+		    !(rs485conf->flags & SER_RS485_RTS_ON_SEND))
+			rs485conf->flags |= SER_RS485_RX_DURING_TX;
+
 		/* disable transmitter */
 		temp = readl(sport->port.membase + UCR2);
 		if (rs485conf->flags & SER_RS485_RTS_AFTER_SEND)
@@ -2053,6 +2058,22 @@ static int serial_imx_probe_dt(struct imx_port *sport,
 	if (of_get_property(np, "rts-gpios", NULL))
 		sport->have_rtsgpio = 1;
 
+	sport->port.rs485.flags = 0;
+
+	if (of_get_property(np, "rs485-rx-during-tx", NULL))
+		sport->port.rs485.flags |= SER_RS485_RX_DURING_TX;
+
+	if (of_get_property(np, "linux,rs485-enabled-at-boot-time", NULL))
+		sport->port.rs485.flags |= SER_RS485_ENABLED;
+
+	if (of_get_property(np, "rs485-rts-active-low", NULL)) {
+		sport->port.rs485.flags &= ~SER_RS485_RTS_ON_SEND;
+		sport->port.rs485.flags |= SER_RS485_RTS_AFTER_SEND;
+	} else {
+		sport->port.rs485.flags &= ~SER_RS485_RTS_AFTER_SEND;
+		sport->port.rs485.flags |= SER_RS485_RTS_ON_SEND;
+	}
+
 	return 0;
 }
 #else
@@ -2120,8 +2141,6 @@ static int serial_imx_probe(struct platform_device *pdev)
 	sport->port.fifosize = 32;
 	sport->port.ops = &imx_pops;
 	sport->port.rs485_config = imx_rs485_config;
-	sport->port.rs485.flags =
-		SER_RS485_RTS_ON_SEND | SER_RS485_RX_DURING_TX;
 	sport->port.flags = UPF_BOOT_AUTOCONF;
 	init_timer(&sport->timer);
 	sport->timer.function = imx_timeout;
@@ -2153,6 +2172,24 @@ static int serial_imx_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to enable per clk: %d\n", ret);
 		return ret;
 	}
+
+	if (sport->port.rs485.flags & SER_RS485_ENABLED &&
+	    (!sport->have_rtscts && !sport->have_rtsgpio))
+		dev_err(&pdev->dev, "no RTS control, disabling rs485\n");
+
+	/*
+	 * If using the i.MX UART RTS/CTS control then the RTS (CTS_B)
+	 * signal cannot be set low during transmission in case the
+	 * receiver is off (limitation of the i.MX UART IP).
+	 */
+	if (sport->port.rs485.flags & SER_RS485_ENABLED &&
+	    sport->have_rtscts && !sport->have_rtsgpio &&
+	    (!(sport->port.rs485.flags & SER_RS485_RTS_ON_SEND) &&
+	     !(sport->port.rs485.flags & SER_RS485_RX_DURING_TX)))
+		dev_err(&pdev->dev,
+			"low-active RTS not possible when receiver is off, enabling receiver\n");
+
+	imx_rs485_config(&sport->port, &sport->port.rs485);
 
 	/* Disable interrupts before requesting them */
 	reg = readl_relaxed(sport->port.membase + UCR1);
