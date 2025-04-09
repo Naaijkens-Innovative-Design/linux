@@ -1,0 +1,22 @@
+name: PlatformIO CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get install fakeroot build-essential kexec-tools kernel-wedge gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabihf libncurses5 libncurses5-dev libelf-dev asciidoc binutils-dev
+        sudo apt-get build-dep linux
+    - name: Configure linux
+      run: |
+        make kontron_defconfig
+    - name: Build linux
+        ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- make zImage
+        ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- make imxceet-ull-s-512-50.dtb
+        ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- make modules
