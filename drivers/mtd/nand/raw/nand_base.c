@@ -419,6 +419,45 @@ static void nand_read_buf16(struct mtd_info *mtd, uint8_t *buf, int len)
 	ioread16_rep(chip->IO_ADDR_R, p, len >> 1);
 }
 
+/*
+ * nand_bbm_page_offset - Get the page offsets for bad block markers
+ * @chip: NAND chip object
+ * @index: Index for the page offset
+ *
+ * Returns an integer that corresponds to the page offset within a block, for
+ * a page that is used to store bad block markers. If no more page offsets are
+ * available, -1 is returned.
+ */
+int nand_bbm_page_offset(struct nand_chip *chip, int index)
+{
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	int last_page = ((mtd->erasesize - mtd->writesize) >>
+			 chip->page_shift) & chip->pagemask;
+
+	switch (index) {
+	case 0:
+		if ((chip->bbt_options & NAND_BBT_SCANLASTPAGE) &&
+		    !(chip->bbt_options & NAND_BBT_SCAN2NDPAGE))
+			return last_page;
+		else
+			return 0;
+		break;
+	case 1:
+		if (chip->bbt_options & NAND_BBT_SCAN2NDPAGE)
+			return 1;
+		break;
+	case 2:
+		if ((chip->bbt_options & NAND_BBT_SCANLASTPAGE) &&
+		    (chip->bbt_options & NAND_BBT_SCAN2NDPAGE))
+			return last_page;
+		break;
+	default:
+		break;
+	}
+
+	return -1;
+}
+
 /**
  * nand_block_bad - [DEFAULT] Read bad block marker from the chip
  * @mtd: MTD device structure
@@ -428,18 +467,15 @@ static void nand_read_buf16(struct mtd_info *mtd, uint8_t *buf, int len)
  */
 static int nand_block_bad(struct mtd_info *mtd, loff_t ofs)
 {
-	int page, page_end, res;
 	struct nand_chip *chip = mtd_to_nand(mtd);
+	int page_offset, i = 0;
+	int res, first_page = (int)(ofs >> chip->page_shift) & chip->pagemask;
 	u8 bad;
 
-	if (chip->bbt_options & NAND_BBT_SCANLASTPAGE)
-		ofs += mtd->erasesize - mtd->writesize;
+	page_offset = nand_bbm_page_offset(chip, 0);
 
-	page = (int)(ofs >> chip->page_shift) & chip->pagemask;
-	page_end = page + (chip->bbt_options & NAND_BBT_SCAN2NDPAGE ? 2 : 1);
-
-	for (; page < page_end; page++) {
-		res = chip->ecc.read_oob(mtd, chip, page);
+	do {
+		res = chip->ecc.read_oob(mtd, chip, first_page + page_offset);
 		if (res < 0)
 			return res;
 
@@ -451,7 +487,9 @@ static int nand_block_bad(struct mtd_info *mtd, loff_t ofs)
 			res = hweight8(bad) < chip->badblockbits;
 		if (res)
 			return res;
-	}
+
+		page_offset = nand_bbm_page_offset(chip, ++i);
+	} while (page_offset != -1);
 
 	return 0;
 }
@@ -470,7 +508,7 @@ static int nand_default_block_markbad(struct mtd_info *mtd, loff_t ofs)
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct mtd_oob_ops ops;
 	uint8_t buf[2] = { 0, 0 };
-	int ret = 0, res, i = 0;
+	int ret = 0, res, i = 0, page_offset;
 
 	memset(&ops, 0, sizeof(ops));
 	ops.oobbuf = buf;
@@ -483,17 +521,16 @@ static int nand_default_block_markbad(struct mtd_info *mtd, loff_t ofs)
 	}
 	ops.mode = MTD_OPS_PLACE_OOB;
 
-	/* Write to first/last page(s) if necessary */
-	if (chip->bbt_options & NAND_BBT_SCANLASTPAGE)
-		ofs += mtd->erasesize - mtd->writesize;
+	page_offset = nand_bbm_page_offset(chip, 0);
+
 	do {
-		res = nand_do_write_oob(mtd, ofs, &ops);
+		res = nand_do_write_oob(mtd, ofs + page_offset * mtd->writesize,
+					&ops);
 		if (!ret)
 			ret = res;
 
-		i++;
-		ofs += mtd->writesize;
-	} while ((chip->bbt_options & NAND_BBT_SCAN2NDPAGE) && i < 2);
+		page_offset = nand_bbm_page_offset(chip, ++i);
+	} while (page_offset != -1);
 
 	return ret;
 }
@@ -2034,33 +2071,6 @@ read_retry:
 }
 
 /**
- * nand_read - [MTD Interface] MTD compatibility function for nand_do_read_ecc
- * @mtd: MTD device structure
- * @from: offset to read from
- * @len: number of bytes to read
- * @retlen: pointer to variable to store the number of read bytes
- * @buf: the databuffer to put data
- *
- * Get hold of the chip and call nand_do_read.
- */
-static int nand_read(struct mtd_info *mtd, loff_t from, size_t len,
-		     size_t *retlen, uint8_t *buf)
-{
-	struct mtd_oob_ops ops;
-	int ret;
-
-	nand_get_device(mtd, FL_READING);
-	memset(&ops, 0, sizeof(ops));
-	ops.len = len;
-	ops.datbuf = buf;
-	ops.mode = MTD_OPS_PLACE_OOB;
-	ret = nand_do_read_ops(mtd, from, &ops);
-	*retlen = ops.retlen;
-	nand_release_device(mtd);
-	return ret;
-}
-
-/**
  * nand_read_oob_std - [REPLACEABLE] the most common OOB data read function
  * @mtd: mtd info structure
  * @chip: nand chip info structure
@@ -2828,33 +2838,6 @@ static int panic_nand_write(struct mtd_info *mtd, loff_t to, size_t len,
 	ret = nand_do_write_ops(mtd, to, &ops);
 
 	*retlen = ops.retlen;
-	return ret;
-}
-
-/**
- * nand_write - [MTD Interface] NAND write with ECC
- * @mtd: MTD device structure
- * @to: offset to write to
- * @len: number of bytes to write
- * @retlen: pointer to variable to store the number of written bytes
- * @buf: the data to write
- *
- * NAND write with ECC.
- */
-static int nand_write(struct mtd_info *mtd, loff_t to, size_t len,
-			  size_t *retlen, const uint8_t *buf)
-{
-	struct mtd_oob_ops ops;
-	int ret;
-
-	nand_get_device(mtd, FL_WRITING);
-	memset(&ops, 0, sizeof(ops));
-	ops.len = len;
-	ops.datbuf = (uint8_t *)buf;
-	ops.mode = MTD_OPS_PLACE_OOB;
-	ret = nand_do_write_ops(mtd, to, &ops);
-	*retlen = ops.retlen;
-	nand_release_device(mtd);
 	return ret;
 }
 
@@ -4911,8 +4894,6 @@ int nand_scan_tail(struct mtd_info *mtd)
 	mtd->_erase = nand_erase;
 	mtd->_point = NULL;
 	mtd->_unpoint = NULL;
-	mtd->_read = nand_read;
-	mtd->_write = nand_write;
 	mtd->_panic_write = panic_nand_write;
 	mtd->_read_oob = nand_read_oob;
 	mtd->_write_oob = nand_write_oob;

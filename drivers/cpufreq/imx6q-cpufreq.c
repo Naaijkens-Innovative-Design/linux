@@ -9,6 +9,7 @@
 #include <linux/clk.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/cpu_cooling.h>
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -18,6 +19,7 @@
 
 #define PU_SOC_VOLTAGE_NORMAL	1250000
 #define PU_SOC_VOLTAGE_HIGH	1275000
+#define FREQ_528_MHZ		528000000
 #define FREQ_1P2_GHZ		1200000000
 
 static struct regulator *arm_reg;
@@ -35,6 +37,7 @@ static struct clk *pll2_bus_clk;
 static struct clk *secondary_sel_clk;
 
 static struct device *cpu_dev;
+static struct thermal_cooling_device *cdev;
 static bool free_opp;
 static struct cpufreq_frequency_table *freq_table;
 static unsigned int transition_latency;
@@ -111,14 +114,20 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		 * voltage of 528MHz, so lower the CPU frequency to one
 		 * half before changing CPU frequency.
 		 */
-		clk_set_rate(arm_clk, (old_freq >> 1) * 1000);
-		clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		if ((old_freq * 1000) <= FREQ_528_MHZ) {
+			clk_set_rate(arm_clk, (old_freq >> 1) * 1000);
+			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		}
 		if (freq_hz > clk_get_rate(pll2_pfd2_396m_clk))
 			clk_set_parent(secondary_sel_clk, pll2_bus_clk);
 		else
 			clk_set_parent(secondary_sel_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(step_clk, secondary_sel_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
+		if (freq_hz > FREQ_528_MHZ) {
+			clk_set_rate(pll1_sys_clk, freq_hz);
+			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		}
 	} else {
 		clk_set_parent(step_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
@@ -174,6 +183,16 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	return 0;
 }
 
+static void imx6q_cpufreq_ready(struct cpufreq_policy *policy)
+{
+	cdev = of_cpufreq_cooling_register(policy);
+
+	if (!cdev)
+		dev_err(cpu_dev,
+			"running cpufreq without cooling device: %ld\n",
+			PTR_ERR(cdev));
+}
+
 static int imx6q_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int ret;
@@ -185,13 +204,22 @@ static int imx6q_cpufreq_init(struct cpufreq_policy *policy)
 	return ret;
 }
 
+static int imx6q_cpufreq_exit(struct cpufreq_policy *policy)
+{
+	cpufreq_cooling_unregister(cdev);
+
+	return 0;
+}
+
 static struct cpufreq_driver imx6q_cpufreq_driver = {
 	.flags = CPUFREQ_NEED_INITIAL_FREQ_CHECK,
 	.verify = cpufreq_generic_frequency_table_verify,
 	.target_index = imx6q_set_target,
 	.get = cpufreq_generic_get,
 	.init = imx6q_cpufreq_init,
+	.exit = imx6q_cpufreq_exit,
 	.name = "imx6q-cpufreq",
+	.ready = imx6q_cpufreq_ready,
 	.attr = cpufreq_generic_attr,
 	.suspend = cpufreq_generic_suspend,
 };

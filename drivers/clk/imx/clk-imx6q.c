@@ -899,6 +899,17 @@ static void __init imx6q_clocks_init(struct device_node *ccm_node)
 	if (ret)
 		pr_warn("failed to set up CLKO: %d\n", ret);
 
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-ccm");
+	if (np && of_property_read_bool(np, "ccm-clko1-12mhz")) {
+		ret = clk_set_parent(clk[IMX6QDL_CLK_CKO2], clk[IMX6QDL_CLK_CKO2_PODF]);
+		if (!ret)
+			ret = clk_set_rate(clk[IMX6QDL_CLK_CKO2], 12000000);
+		if (!ret)
+			ret = clk_prepare_enable(clk[IMX6QDL_CLK_CKO]);
+		if (ret)
+			pr_warn("failed to set up CLKO: %d\n", ret);
+	}
+
 	/* Audio-related clocks configuration */
 	clk_set_parent(clk[IMX6QDL_CLK_SPDIF_SEL], clk[IMX6QDL_CLK_PLL3_PFD3_454M]);
 
