@@ -15,9 +15,7 @@ jobs:
         sudo apt-get install fakeroot build-essential kexec-tools kernel-wedge gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabihf libncurses6 libncurses-dev libelf-dev asciidoc binutils-dev
     - name: Configure linux
       run: |
-        make kontron_defconfig
+        ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- make kontron_defconfig
     - name: Build linux
       run: |
-        ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- make zImage
-        ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- make imxceet-ull-s-512-50.dtb
         ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- make modules
